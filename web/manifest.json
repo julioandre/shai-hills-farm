@@ -1,0 +1,35 @@
+{
+    "name": "Shai Hills Farm",
+    "short_name": "Shai Hills",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#F4EFE6",
+    "theme_color": "#1F4D3A",
+    "description": "Livestock register for Shai Hills Farm, Shai Hills, Ghana.",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
