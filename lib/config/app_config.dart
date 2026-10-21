@@ -4,10 +4,17 @@
 /// Both values empty means the on-device mock. Neither value is invented
 /// or stored in the repo.
 class AppConfig {
-  const AppConfig({required this.supabaseUrl, required this.supabaseAnonKey});
+  const AppConfig({
+    required this.supabaseUrl,
+    required this.supabaseAnonKey,
+    this.geminiApiKey = '',
+  });
 
   final String supabaseUrl;
   final String supabaseAnonKey;
+
+  /// Optional. When set, a receipt photo is read before the person confirms it.
+  final String geminiApiKey;
 
   bool get hasSupabase => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 
@@ -25,6 +32,11 @@ class AppConfig {
   factory AppConfig.fromEnvironment() {
     const url = String.fromEnvironment('SUPABASE_URL');
     const key = String.fromEnvironment('SUPABASE_ANON_KEY');
-    return AppConfig(supabaseUrl: url.trim(), supabaseAnonKey: key.trim());
+    const gemini = String.fromEnvironment('GEMINI_API_KEY');
+    return AppConfig(
+      supabaseUrl: url.trim(),
+      supabaseAnonKey: key.trim(),
+      geminiApiKey: gemini.trim(),
+    );
   }
 }

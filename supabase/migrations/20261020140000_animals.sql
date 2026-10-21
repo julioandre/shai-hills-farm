@@ -1,6 +1,6 @@
--- Sprint 1 animal register for Shai Hills Farm OS.
+-- Animal register for Katamansu Spice Farm.
 -- Run this in the Supabase SQL editor before signing in from the app.
--- Breeding, health, feed, mortality, sales, and sync tables are later sprints.
+-- Then run 20261020180000_farm_book.sql for the farm book and the 8-person cap.
 
 create table public.animals (
   id uuid primary key default gen_random_uuid(),

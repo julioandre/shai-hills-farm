@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shai_hills_farm/domain/animal.dart';
+import 'package:shai_hills_farm/domain/phone.dart';
 import 'package:shai_hills_farm/domain/validation.dart';
 
 void main() {
@@ -14,17 +15,16 @@ void main() {
     ),
   ];
 
-  test('rejects a short password and a malformed email', () {
+  test('accepts a Ghana phone number and a 6-digit code', () {
     expect(
-      validateEmail('not-an-email'),
-      'Enter the email address you use for the farm.',
+      validatePhone('123'),
+      'Enter the phone number you use, like 024 412 0008.',
     );
-    expect(validateEmail('keeper@shaihills.farm'), isNull);
-    expect(
-      validatePassword('short'),
-      'Use a password of at least 8 characters.',
-    );
-    expect(validatePassword('pasture-1'), isNull);
+    expect(validatePhone('024 412 0008'), isNull);
+    expect(normalizePhone('+233244120008'), demoPhone);
+    expect(displayPhone(demoPhone), '024 412 0008');
+    expect(validateOtp('12345'), 'Enter the 6-digit code from the text.');
+    expect(validateOtp('123456'), isNull);
   });
 
   test('tag must be present, short enough, and unique ignoring case', () {

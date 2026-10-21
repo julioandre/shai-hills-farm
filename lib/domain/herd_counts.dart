@@ -7,6 +7,7 @@ class HerdCounts {
     required this.cattle,
     required this.goats,
     required this.poultry,
+    this.sheep = 0,
   });
 
   static const empty = HerdCounts(pigs: 0, cattle: 0, goats: 0, poultry: 0);
@@ -15,14 +16,16 @@ class HerdCounts {
   final int cattle;
   final int goats;
   final int poultry;
+  final int sheep;
 
-  int get onFarm => pigs + cattle + goats + poultry;
+  int get onFarm => pigs + cattle + goats + sheep + poultry;
 
   int forSpecies(Species species) {
     return switch (species) {
       Species.pig => pigs,
       Species.cattle => cattle,
       Species.goat => goats,
+      Species.sheep => sheep,
       Species.poultry => poultry,
     };
   }
@@ -31,6 +34,7 @@ class HerdCounts {
     var pigs = 0;
     var cattle = 0;
     var goats = 0;
+    var sheep = 0;
     var poultry = 0;
     for (final animal in animals) {
       if (animal.status != AnimalStatus.onFarm) {
@@ -43,6 +47,8 @@ class HerdCounts {
           cattle += 1;
         case Species.goat:
           goats += 1;
+        case Species.sheep:
+          sheep += 1;
         case Species.poultry:
           poultry += 1;
       }
@@ -51,6 +57,7 @@ class HerdCounts {
       pigs: pigs,
       cattle: cattle,
       goats: goats,
+      sheep: sheep,
       poultry: poultry,
     );
   }

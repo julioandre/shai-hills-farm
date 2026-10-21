@@ -15,15 +15,27 @@ void main() {
   ) async {
     await _pumpFarm(tester, AppBackend.local(MemoryStore()));
 
-    expect(find.text('Shai Hills Farm'), findsOneWidget);
+    expect(find.bySemanticsLabel('Katamansu Spice Farm'), findsOneWidget);
     expect(find.textContaining('On-device records'), findsOneWidget);
 
-    await _createAccount(tester, 'keeper@shaihills.farm', 'pasture-1');
+    await _signInPractice(tester);
 
-    expect(find.text('0'), findsNWidgets(4));
+    expect(find.text('0'), findsNWidgets(5));
+    await tester.scrollUntilVisible(
+      find.text(
+        'Nothing is on the farm yet. Register the first pig, cow, goat, sheep, or bird.',
+      ),
+      300,
+      scrollable: find
+          .descendant(
+            of: find.byKey(const Key('home-page')),
+            matching: find.byType(Scrollable),
+          )
+          .first,
+    );
     expect(
       find.text(
-        'Nothing is on the farm yet. Register the first pig, cow, goat, or bird.',
+        'Nothing is on the farm yet. Register the first pig, cow, goat, sheep, or bird.',
       ),
       findsOneWidget,
     );
@@ -65,9 +77,19 @@ void main() {
     await tester.tap(find.byKey(const Key('filter-all')));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.byKey(const Key('animal-SH-PIG-01')));
-    await tester.pumpAndSettle();
+    await _openAnimal(tester, 'SH-PIG-01');
+    await _scrollTo(tester, find.byKey(const Key('status-sold')), 400);
     await tester.tap(find.byKey(const Key('status-sold')));
+    await tester.pump();
+    await _scrollTo(tester, find.byKey(const Key('sale-weight')), 300);
+    await tester.enterText(find.byKey(const Key('sale-weight')), '40');
+    await tester.enterText(find.byKey(const Key('sale-price')), '800');
+    await tester.enterText(find.byKey(const Key('buyer-name')), 'Kojo');
+    await tester.enterText(
+      find.byKey(const Key('buyer-contact')),
+      '0244000001',
+    );
+    await _scrollTo(tester, find.byKey(const Key('save-animal')), 400);
     await tester.tap(find.byKey(const Key('save-animal')));
     await tester.pumpAndSettle();
     expect(find.text('Pig · Female · Sold'), findsOneWidget);
@@ -80,8 +102,8 @@ void main() {
 
     await tester.tap(find.byKey(const Key('nav-register')));
     await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const Key('animal-SH-PIG-01')));
-    await tester.pumpAndSettle();
+    await _openAnimal(tester, 'SH-PIG-01');
+    await _scrollTo(tester, find.byKey(const Key('remove-animal')), 400);
     await tester.tap(find.byKey(const Key('remove-animal')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('confirm-remove')));
@@ -90,9 +112,9 @@ void main() {
     expect(find.text('SH-GOAT-02'), findsOneWidget);
   });
 
-  testWidgets('a second account does not see the first herd', (tester) async {
+  testWidgets('a second account sees the same herd', (tester) async {
     await _pumpFarm(tester, AppBackend.local(MemoryStore()));
-    await _createAccount(tester, 'one@shaihills.farm', 'pasture-1');
+    await _signInPractice(tester);
     await tester.tap(find.byKey(const Key('nav-register')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('add-animal')));
@@ -106,48 +128,41 @@ void main() {
     expect(find.text('SH-CATTLE-01'), findsOneWidget);
 
     await _signOut(tester);
-    expect(find.text('Shai Hills Farm'), findsOneWidget);
+    expect(find.bySemanticsLabel('Katamansu Spice Farm'), findsOneWidget);
 
-    await tester.enterText(
-      find.byKey(const Key('email-field')),
-      'one@shaihills.farm',
-    );
-    await tester.enterText(
-      find.byKey(const Key('password-field')),
-      'wrong-pass',
-    );
+    await tester.enterText(find.byKey(const Key('phone-field')), '0244120008');
+    await tester.tap(find.byKey(const Key('send-code')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('code-field')), '000000');
     await tester.tap(find.byKey(const Key('submit-auth')));
     await tester.pumpAndSettle();
     expect(
-      find.text(
-        'That email and password do not match an account on this device.',
-      ),
+      find.text('That code is not right. Check the text and try again.'),
       findsOneWidget,
     );
 
-    await tester.enterText(
-      find.byKey(const Key('password-field')),
-      'pasture-1',
-    );
+    await tester.enterText(find.byKey(const Key('code-field')), '123456');
     await tester.tap(find.byKey(const Key('submit-auth')));
     await tester.pumpAndSettle();
     expect(_countText('cattle'), '1');
 
     await _signOut(tester);
-    await _createAccount(tester, 'two@shaihills.farm', 'pasture-1');
-    expect(_countText('cattle'), '0');
-    expect(find.textContaining('Nothing is on the farm yet'), findsOneWidget);
+    await _createAccount(tester, '0244000002');
+    expect(_countText('cattle'), '1');
+    expect(find.textContaining('Welcome'), findsWidgets);
+    expect(find.textContaining('Nothing is on the farm yet'), findsNothing);
   });
 
   testWidgets('duplicate tags and missing species stay on the form', (
     tester,
   ) async {
     await _pumpFarm(tester, AppBackend.local(MemoryStore()));
-    await _createAccount(tester, 'keeper@shaihills.farm', 'pasture-1');
+    await _signInPractice(tester);
     await tester.tap(find.byKey(const Key('nav-register')));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('add-animal')));
     await tester.pumpAndSettle();
+    await _scrollTo(tester, find.byKey(const Key('save-animal')), 400);
     await tester.tap(find.byKey(const Key('save-animal')));
     await tester.pump();
     expect(find.text('Choose a species.'), findsOneWidget);
@@ -156,6 +171,7 @@ void main() {
     await tester.tap(find.byKey(const Key('add-animal')));
     await tester.pumpAndSettle();
     await _fillAnimal(tester, tag: 'sh-pig-01', species: 'pig', sex: 'male');
+    await _scrollTo(tester, find.byKey(const Key('save-animal')), 400);
     await tester.tap(find.byKey(const Key('save-animal')));
     await tester.pump();
     expect(
@@ -172,15 +188,15 @@ void main() {
     final backend = AppBackend(
       auth: local.auth,
       animals: _GatedAnimals(local.animals, gate),
+      book: local.book,
+      ledger: local.ledger,
+      feed: local.feed,
+      tasks: local.tasks,
+      sync: local.sync,
       localOnly: true,
     );
     await _pumpFarm(tester, backend);
-    await _createAccount(
-      tester,
-      'keeper@shaihills.farm',
-      'pasture-1',
-      settle: false,
-    );
+    await _signInPractice(tester, settle: false);
     expect(find.text('Loading the herd…'), findsOneWidget);
 
     gate.complete();
@@ -197,10 +213,15 @@ void main() {
     final backend = AppBackend(
       auth: local.auth,
       animals: _FlakyAnimals(local.animals, () => failures++ < 1),
+      book: local.book,
+      ledger: local.ledger,
+      feed: local.feed,
+      tasks: local.tasks,
+      sync: local.sync,
       localOnly: true,
     );
     await _pumpFarm(tester, backend);
-    await _createAccount(tester, 'keeper@shaihills.farm', 'pasture-1');
+    await _signInPractice(tester);
     expect(find.text('The herd could not be loaded'), findsOneWidget);
     expect(find.text('The barn book is locked.'), findsOneWidget);
 
@@ -210,24 +231,18 @@ void main() {
     expect(_countText('pig'), '0');
   });
 
-  testWidgets('rejects a short password before creating an account', (
+  testWidgets('rejects a short phone number before sending a code', (
     tester,
   ) async {
     await _pumpFarm(tester, AppBackend.local(MemoryStore()));
-    await tester.tap(find.byKey(const Key('switch-auth-mode')));
-    await tester.pump();
-    await tester.enterText(
-      find.byKey(const Key('email-field')),
-      'keeper@shaihills.farm',
-    );
-    await tester.enterText(find.byKey(const Key('password-field')), 'short');
-    await tester.tap(find.byKey(const Key('submit-auth')));
+    await tester.enterText(find.byKey(const Key('phone-field')), '123');
+    await tester.tap(find.byKey(const Key('send-code')));
     await tester.pump();
     expect(
-      find.text('Use a password of at least 8 characters.'),
+      find.text('Enter the phone number you use, like 024 412 0008.'),
       findsOneWidget,
     );
-    expect(find.text('Dashboard'), findsNothing);
+    expect(find.text('Home'), findsNothing);
   });
 }
 
@@ -238,7 +253,7 @@ String _countText(String species) {
 }
 
 Future<void> _pumpFarm(WidgetTester tester, AppBackend backend) async {
-  tester.view.physicalSize = const Size(390, 1200);
+  tester.view.physicalSize = const Size(390, 1600);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
@@ -247,16 +262,11 @@ Future<void> _pumpFarm(WidgetTester tester, AppBackend backend) async {
   await tester.pump(const Duration(milliseconds: 20));
 }
 
-Future<void> _createAccount(
-  WidgetTester tester,
-  String email,
-  String password, {
-  bool settle = true,
-}) async {
-  await tester.tap(find.byKey(const Key('switch-auth-mode')));
-  await tester.pump();
-  await tester.enterText(find.byKey(const Key('email-field')), email);
-  await tester.enterText(find.byKey(const Key('password-field')), password);
+Future<void> _signInPractice(WidgetTester tester, {bool settle = true}) async {
+  await tester.enterText(find.byKey(const Key('phone-field')), '0244120008');
+  await tester.tap(find.byKey(const Key('send-code')));
+  await tester.pumpAndSettle();
+  await tester.enterText(find.byKey(const Key('code-field')), '123456');
   await tester.tap(find.byKey(const Key('submit-auth')));
   if (settle) {
     await tester.pumpAndSettle();
@@ -264,6 +274,22 @@ Future<void> _createAccount(
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 20));
   }
+}
+
+Future<void> _createAccount(WidgetTester tester, String phone) async {
+  await tester.tap(find.byKey(const Key('switch-auth-mode')));
+  await tester.pump();
+  await tester.enterText(find.byKey(const Key('name-field')), 'Ama');
+  await tester.enterText(find.byKey(const Key('phone-field')), phone);
+  await tester.tap(find.byKey(const Key('send-code')));
+  await tester.pumpAndSettle();
+  final notice = tester.widget<Text>(find.textContaining('Your code is '));
+  final code = RegExp(r'Your code is (\d{6})')
+      .firstMatch(notice.data!)!
+      .group(1)!;
+  await tester.enterText(find.byKey(const Key('code-field')), code);
+  await tester.tap(find.byKey(const Key('submit-auth')));
+  await tester.pumpAndSettle();
 }
 
 Future<void> _fillAnimal(
@@ -277,6 +303,25 @@ Future<void> _fillAnimal(
   await tester.pump();
   await tester.tap(find.byKey(Key('sex-$sex')));
   await tester.pump();
+  final breed = switch (species) {
+    'goat' => 'West African Dwarf',
+    'cattle' => 'Sokoto Gudali',
+    'sheep' => 'West African Dwarf',
+    'poultry' => 'Local',
+    _ => 'Large White',
+  };
+  await _scrollTo(tester, find.byKey(Key('breed-$breed')), 200);
+  await tester.tap(find.byKey(Key('breed-$breed')));
+  await tester.pump();
+  await _scrollTo(tester, find.byKey(const Key('origin-purchased')), 200);
+  await tester.tap(find.byKey(const Key('origin-purchased')));
+  await tester.pump();
+  await _scrollTo(tester, find.byKey(const Key('source-farm')), 200);
+  await tester.enterText(find.byKey(const Key('source-farm')), 'Market');
+  await tester.enterText(find.byKey(const Key('supplier-name')), 'Market');
+  await tester.enterText(find.byKey(const Key('purchase-weight')), '12');
+  await tester.enterText(find.byKey(const Key('purchase-price')), '200');
+  await tester.enterText(find.byKey(const Key('transport-cost')), '0');
 }
 
 Future<void> _saveAnimal(
@@ -286,8 +331,47 @@ Future<void> _saveAnimal(
   required String sex,
 }) async {
   await _fillAnimal(tester, tag: tag, species: species, sex: sex);
+  await _scrollTo(tester, find.byKey(const Key('save-animal')), 400);
   await tester.tap(find.byKey(const Key('save-animal')));
   await tester.pumpAndSettle();
+}
+
+Future<void> _openAnimal(WidgetTester tester, String tag) async {
+  final tile = find.byKey(Key('animal-$tag'));
+  final scrollable = find
+      .descendant(
+        of: find.byKey(const Key('registry-page')),
+        matching: find.byType(Scrollable),
+      )
+      .first;
+  await tester.scrollUntilVisible(tile, 400, scrollable: scrollable);
+  await tester.pumpAndSettle();
+  final bottom = tester.getRect(tile).bottom;
+  final height = tester.view.physicalSize.height / tester.view.devicePixelRatio;
+  const clearance = 120.0;
+  if (bottom > height - clearance) {
+    await tester.drag(scrollable, Offset(0, height - clearance - bottom));
+    await tester.pumpAndSettle();
+  }
+  await tester.tap(tile);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _scrollTo(
+  WidgetTester tester,
+  Finder finder, [
+  double delta = 400,
+]) {
+  return tester.scrollUntilVisible(
+    finder,
+    delta,
+    scrollable: find
+        .descendant(
+          of: find.byKey(const Key('animal-form')),
+          matching: find.byType(Scrollable),
+        )
+        .first,
+  );
 }
 
 Future<void> _signOut(WidgetTester tester) async {

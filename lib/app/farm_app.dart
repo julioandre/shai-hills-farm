@@ -4,7 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:shai_hills_farm/app/app_backend.dart';
 import 'package:shai_hills_farm/domain/session.dart';
 import 'package:shai_hills_farm/state/auth_controller.dart';
+import 'package:shai_hills_farm/state/book_controller.dart';
+import 'package:shai_hills_farm/state/feed_controller.dart';
 import 'package:shai_hills_farm/state/herd_controller.dart';
+import 'package:shai_hills_farm/state/ledger_controller.dart';
+import 'package:shai_hills_farm/state/task_controller.dart';
 import 'package:shai_hills_farm/theme/farm_theme.dart';
 import 'package:shai_hills_farm/ui/farm_frame.dart';
 import 'package:shai_hills_farm/ui/home_shell.dart';
@@ -23,6 +27,10 @@ class FarmApp extends StatefulWidget {
 class _FarmAppState extends State<FarmApp> {
   late final AuthController auth;
   late final HerdController herd;
+  late final BookController book;
+  late final LedgerController ledger;
+  late final FeedController feed;
+  late final TaskController tasks;
   FarmSession? _loadedFor;
 
   @override
@@ -30,6 +38,10 @@ class _FarmAppState extends State<FarmApp> {
     super.initState();
     auth = AuthController(widget.backend.auth);
     herd = HerdController(widget.backend.animals);
+    book = BookController(widget.backend.book);
+    ledger = LedgerController(widget.backend.ledger, widget.backend.sync);
+    feed = FeedController(widget.backend.feed);
+    tasks = TaskController(widget.backend.tasks);
     auth.addListener(_syncHerd);
     unawaited(auth.restore());
   }
@@ -39,11 +51,18 @@ class _FarmAppState extends State<FarmApp> {
     if (session == null) {
       _loadedFor = null;
       herd.clear();
+      book.clear();
+      feed.clear();
+      tasks.clear();
       return;
     }
     if (_loadedFor?.userId != session.userId) {
       _loadedFor = session;
       unawaited(herd.load());
+      unawaited(book.load());
+      unawaited(feed.load());
+      unawaited(tasks.load());
+      unawaited(ledger.load().then((_) => ledger.sync()));
     }
   }
 
@@ -52,13 +71,17 @@ class _FarmAppState extends State<FarmApp> {
     auth.removeListener(_syncHerd);
     auth.dispose();
     herd.dispose();
+    book.dispose();
+    ledger.dispose();
+    feed.dispose();
+    tasks.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Shai Hills Farm',
+      title: 'Katamansu Spice Farm',
       debugShowCheckedModeBanner: false,
       theme: farmTheme(),
       scrollBehavior: const FarmScrollBehavior(),
@@ -83,6 +106,10 @@ class _FarmAppState extends State<FarmApp> {
           return HomeShell(
             auth: auth,
             herd: herd,
+            book: book,
+            ledger: ledger,
+            feed: feed,
+            tasks: tasks,
             localOnly: widget.backend.localOnly,
             startupNotice: widget.backend.startupNotice,
           );

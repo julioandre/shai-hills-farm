@@ -11,13 +11,9 @@ class SupabaseAnimalRepository implements AnimalRepository {
 
   @override
   Future<List<Animal>> list() async {
-    final id = _requireUser();
+    _requireUser();
     try {
-      final rows = await _client
-          .from('animals')
-          .select()
-          .eq('user_id', id)
-          .order('tag');
+      final rows = await _client.from('animals').select().order('tag');
       return [
         for (final row in rows)
           Animal.fromJson(Map<String, dynamic>.from(row as Map)),
@@ -51,9 +47,9 @@ class SupabaseAnimalRepository implements AnimalRepository {
 
   @override
   Future<void> remove(String id) async {
-    final user = _requireUser();
+    _requireUser();
     try {
-      await _client.from('animals').delete().eq('id', id).eq('user_id', user);
+      await _client.from('animals').delete().eq('id', id);
     } catch (error) {
       throw RegisterFailure(registerErrorMessage(error));
     }

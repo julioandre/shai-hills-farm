@@ -4,10 +4,11 @@ import 'package:shai_hills_farm/data/key_value_store.dart';
 import 'package:shai_hills_farm/domain/animal.dart';
 import 'package:shai_hills_farm/domain/animal_repository.dart';
 import 'package:shai_hills_farm/domain/failures.dart';
+import 'package:shai_hills_farm/domain/farm_scope.dart';
 
 const _animalsKey = 'shai_hills.animals';
 
-/// Animal register stored on this device, one herd per signed-in account.
+/// One animal register for the farm, shared by every signed-in person.
 class LocalAnimalRepository implements AnimalRepository {
   LocalAnimalRepository({required this.store, required this.userId});
 
@@ -16,14 +17,13 @@ class LocalAnimalRepository implements AnimalRepository {
 
   @override
   Future<List<Animal>> list() async {
-    final id = _requireUser();
-    final all = await _readAll();
-    return all[id] ?? [];
+    _requireUser();
+    return _merged(await _readAll());
   }
 
   @override
   Future<Animal> save(Animal animal) async {
-    final id = _requireUser();
+    _requireUser();
     final trimmed = animal.tag.trim();
     if (trimmed.isEmpty) {
       throw const RegisterFailure('Enter a tag or ID.');
@@ -31,8 +31,7 @@ class LocalAnimalRepository implements AnimalRepository {
     final stored = animal.tag == trimmed
         ? animal
         : animal.copyWith(tag: trimmed);
-    final all = await _readAll();
-    final herd = [...all[id] ?? <Animal>[]];
+    final herd = [..._merged(await _readAll())];
     final clash = herd.any(
       (other) =>
           other.id != stored.id &&
@@ -47,19 +46,51 @@ class LocalAnimalRepository implements AnimalRepository {
     } else {
       herd.add(stored);
     }
-    all[id] = herd;
-    await _writeAll(all);
+    await _writeAll({farmScopeKey: herd});
     return stored;
+  }
+
+  /// Replaces sample animals and keeps any animal the farm added itself.
+  Future<void> replaceSample(List<Animal> sample) async {
+    _requireUser();
+    final kept = [
+      for (final animal in _merged(await _readAll()))
+        if (!animal.id.startsWith('sample-')) animal,
+    ];
+    final tags = kept.map((animal) => animal.tag.toLowerCase()).toSet();
+    final herd = [...kept];
+    for (final animal in sample) {
+      final tag = animal.tag.trim();
+      if (tag.isEmpty || tags.contains(tag.toLowerCase())) {
+        continue;
+      }
+      herd.add(animal.tag == tag ? animal : animal.copyWith(tag: tag));
+      tags.add(tag.toLowerCase());
+    }
+    await _writeAll({farmScopeKey: herd});
   }
 
   @override
   Future<void> remove(String id) async {
-    final user = _requireUser();
-    final all = await _readAll();
-    final herd = [...all[user] ?? <Animal>[]];
+    _requireUser();
+    final herd = [..._merged(await _readAll())];
     herd.removeWhere((animal) => animal.id == id);
-    all[user] = herd;
-    await _writeAll(all);
+    await _writeAll({farmScopeKey: herd});
+  }
+
+  List<Animal> _merged(Map<String, List<Animal>> all) {
+    final byId = <String, Animal>{};
+    final keys = [
+      for (final key in all.keys)
+        if (key != farmScopeKey) key,
+      if (all.containsKey(farmScopeKey)) farmScopeKey,
+    ];
+    for (final key in keys) {
+      for (final animal in all[key] ?? const <Animal>[]) {
+        byId[animal.id] = animal;
+      }
+    }
+    return byId.values.toList();
   }
 
   String _requireUser() {
