@@ -1,5 +1,6 @@
 # Katamansu Spice Farm. The GitHub connection reads this file.
 # Keys stay in env.json and are not stored here.
+# A push to main asks Supabase to apply migrations that are not on the database yet.
 project_id = "shai-hills-farm"
 
 [api]
