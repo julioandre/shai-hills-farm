@@ -270,6 +270,97 @@ void main() {
     expect(afterUse.shortKg, 100);
   });
 
+  test('a formula keeps its own stock and scales a 100 kg mix', () {
+    final today = DateTime(2026, 10, 20);
+    final template = formulaTemplates['Pig Grower']!;
+    final formula = FeedFormula(
+      id: 'grower',
+      name: 'Pig Grower',
+      minimumKg: 20,
+      lines: [
+        for (final line in template)
+          FormulaLine(ingredientName: line.$1, quantityKg: line.$2),
+      ],
+    );
+    expect(formula.totalKg, 100);
+    var mill = FeedMill.empty;
+    mill = buyIngredient(
+      mill,
+      _ingredient('maize', 'Maize', 400, 3),
+      today,
+    ).mill;
+    mill = saveFormula(mill, formula).mill;
+    expect(mill.ingredients.map((row) => row.name), contains('Wheat Bran'));
+    expect(
+      mill.ingredients.firstWhere((row) => row.name == 'Wheat Bran').stockKg,
+      0,
+    );
+    expect(finishedFeed(mill).single.leftKg, 0);
+    expect(finishedFeed(mill).single.low, isTrue);
+
+    final plan = planMix(mill, formula, 1000);
+    expect(plan.lines.firstWhere((row) => row.name == 'Maize').needKg, 550);
+    expect(plan.error, contains('Not enough Maize'));
+
+    mill = buyIngredient(
+      mill,
+      _ingredient('bran', 'Wheat Bran', 100, 2),
+      today,
+    ).mill;
+    mill = buyIngredient(
+      mill,
+      _ingredient('pkc', 'Palm Kernel Cake', 200, 2),
+      today,
+    ).mill;
+    mill = buyIngredient(
+      mill,
+      _ingredient('sbm', 'Soybean Meal', 300, 4),
+      today,
+    ).mill;
+    mill = buyIngredient(
+      mill,
+      _ingredient('premix', 'Premix', 50, 10),
+      today,
+    ).mill;
+    mill = buyIngredient(mill, _ingredient('salt', 'Salt', 30, 1), today).mill;
+    mill = buyIngredient(
+      mill,
+      _ingredient('maize-more', 'Maize', 200, 3),
+      today,
+    ).mill;
+    final mixed = mixFeed(
+      mill,
+      id: 'batch-1',
+      number: 'FD-1',
+      formulaId: 'grower',
+      quantityKg: 1000,
+      producedOn: today,
+      producedBy: 'Ama',
+      today: today,
+    );
+    expect(mixed.error, isNull);
+    expect(finishedFeed(mixed.mill).single.leftKg, 1000);
+    expect(
+      mixed.mill.ingredients.firstWhere((row) => row.name == 'Maize').stockKg,
+      50,
+    );
+
+    final given = giveFinishedFeed(
+      mixed.mill,
+      id: 'out-1',
+      formulaName: 'Pig Grower',
+      quantityKg: 300,
+      issuedOn: today,
+      species: Species.pig,
+      pen: 'Grower Pen A',
+      group: 'Growers',
+      today: today,
+    );
+    expect(given.error, isNull);
+    expect(finishedFeed(given.mill).single.leftKg, 700);
+    expect(given.mill.issues.single.quantityKg, 300);
+  });
+
   testWidgets('buying maize puts it in the store', (tester) async {
     tester.view.physicalSize = const Size(390, 1600);
     tester.view.devicePixelRatio = 1;

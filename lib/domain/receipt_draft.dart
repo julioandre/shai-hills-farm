@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:shai_hills_farm/domain/farm_scope.dart';
+
 /// One line read from a receipt photo.
 class ReceiptItem {
   const ReceiptItem({
@@ -7,6 +9,7 @@ class ReceiptItem {
     this.quantity,
     this.amountCedis,
     this.site = '',
+    this.group = '',
   });
 
   final String name;
@@ -15,6 +18,9 @@ class ReceiptItem {
 
   /// Site id when the photo names a yard. Empty means the whole farm.
   final String site;
+
+  /// Energy source, Forage, Additives, Cerelac, or Other. Empty if unread.
+  final String group;
 }
 
 /// Fields read from receipt photos, for the person to check.
@@ -80,12 +86,14 @@ List<ReceiptItem> _receiptItems(Object? raw) {
     }
     final name = row['name'];
     final site = row['site'];
+    final group = row['group'];
     items.add(
       ReceiptItem(
         name: name is String ? name.trim() : '',
         quantity: _receiptNumber(row['quantity'] ?? row['kilos'] ?? row['kg']),
         amountCedis: _receiptNumber(row['amount'] ?? row['amountCedis']),
         site: site is String ? site.trim() : '',
+        group: group is String ? normalizeResourceCategory(group) : '',
       ),
     );
   }

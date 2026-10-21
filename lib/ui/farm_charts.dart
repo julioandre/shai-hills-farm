@@ -783,3 +783,220 @@ String _sliceText(double value) {
   }
   return value.toStringAsFixed(1);
 }
+
+/// A line of kilos or cedis across the last six months.
+class TrendLine extends StatelessWidget {
+  const TrendLine({
+    super.key,
+    required this.title,
+    required this.points,
+    this.color = farmLeaf,
+  });
+
+  final String title;
+  final List<(String, double)> points;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final peak = points.fold<double>(
+      0,
+      (max, row) => row.$2 > max ? row.$2 : max,
+    );
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(8, 16, 16, 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(left: 8),
+              child: Text(title, style: theme.textTheme.titleLarge),
+            ),
+            const SizedBox(height: 8),
+            if (peak <= 0)
+              const Padding(
+                padding: EdgeInsets.only(left: 8, bottom: 12),
+                child: Text('None in the last six months.'),
+              )
+            else
+              SizedBox(
+                height: 180,
+                child: LineChart(
+                  LineChartData(
+                    minY: 0,
+                    gridData: const FlGridData(show: false),
+                    borderData: FlBorderData(show: false),
+                    titlesData: _bottomTitles(theme.textTheme, [
+                      for (final row in points) row.$1,
+                    ]),
+                    lineBarsData: [
+                      _series(color, [for (final row in points) row.$2]),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Ingredient use as blocks. A bigger block is more kilos.
+class ShareTreemap extends StatelessWidget {
+  const ShareTreemap({super.key, required this.title, required this.slices});
+
+  final String title;
+  final List<ChartSlice> slices;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = [
+      for (final slice in slices)
+        if (slice.value > 0) slice,
+    ]..sort((a, b) => b.value.compareTo(a.value));
+    if (shown.isEmpty) {
+      return const SizedBox.shrink();
+    }
+    final theme = Theme.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: theme.textTheme.titleLarge),
+            const SizedBox(height: 12),
+            SizedBox(
+              height: 220,
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final rects = _treemap([
+                    for (final slice in shown) slice.value,
+                  ], Size(constraints.maxWidth, constraints.maxHeight));
+                  return Stack(
+                    children: [
+                      for (var index = 0; index < shown.length; index++)
+                        if (rects[index].width > 8 && rects[index].height > 8)
+                          Positioned.fromRect(
+                            rect: rects[index].deflate(2),
+                            child: DecoratedBox(
+                              decoration: BoxDecoration(
+                                color: chartColors[index % chartColors.length],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.all(6),
+                                child: Text(
+                                  '${shown[index].label}\n${chartAmount(shown[index].value)} kg',
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+List<Rect> _treemap(List<double> values, Size size) {
+  final total = values.fold<double>(0, (sum, value) => sum + value);
+  final rects = <Rect>[];
+  if (total <= 0 || size.width <= 0 || size.height <= 0) {
+    return [for (final _ in values) Rect.zero];
+  }
+  final areas = [
+    for (final value in values) value / total * size.width * size.height,
+  ];
+  _split(
+    areas,
+    0,
+    areas.length,
+    Rect.fromLTWH(0, 0, size.width, size.height),
+    rects,
+  );
+  return rects;
+}
+
+void _split(List<double> areas, int start, int end, Rect rect, List<Rect> out) {
+  if (start >= end) {
+    return;
+  }
+  if (end - start == 1 || rect.width < 1 || rect.height < 1) {
+    for (var index = start; index < end; index++) {
+      out.add(index == start ? rect : Rect.zero);
+    }
+    return;
+  }
+  final sum = areas.sublist(start, end).fold<double>(0, (a, b) => a + b);
+  if (sum <= 0) {
+    for (var index = start; index < end; index++) {
+      out.add(Rect.zero);
+    }
+    return;
+  }
+  var covered = 0.0;
+  var split = start + 1;
+  for (var index = start; index < end - 1; index++) {
+    covered += areas[index];
+    split = index + 1;
+    if (covered >= sum / 2) {
+      break;
+    }
+  }
+  final share = (covered / sum).clamp(0.0, 1.0);
+  if (rect.width >= rect.height) {
+    final width = rect.width * share;
+    _split(
+      areas,
+      start,
+      split,
+      Rect.fromLTWH(rect.left, rect.top, width, rect.height),
+      out,
+    );
+    _split(
+      areas,
+      split,
+      end,
+      Rect.fromLTWH(
+        rect.left + width,
+        rect.top,
+        rect.width - width,
+        rect.height,
+      ),
+      out,
+    );
+  } else {
+    final height = rect.height * share;
+    _split(
+      areas,
+      start,
+      split,
+      Rect.fromLTWH(rect.left, rect.top, rect.width, height),
+      out,
+    );
+    _split(
+      areas,
+      split,
+      end,
+      Rect.fromLTWH(
+        rect.left,
+        rect.top + height,
+        rect.width,
+        rect.height - height,
+      ),
+      out,
+    );
+  }
+}

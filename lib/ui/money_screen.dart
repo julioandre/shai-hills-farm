@@ -48,11 +48,11 @@ class _MoneyScreenState extends State<MoneyScreen> {
   _MoneyPart _part = _MoneyPart.expenses;
   ExpenseCategory _category = ExpenseCategory.vet;
   Enterprise _enterprise = Enterprise.pig;
-  String _feedType = feedTypes.first;
   String _vetKind = vetKinds.first;
   String _fuelType = fuelTypes.first;
   String _location = allSitesId;
   String? _error;
+  String? _readNote;
   bool _saving = false;
   bool _readingReceipt = false;
   bool _hasReceipt = false;
@@ -167,7 +167,9 @@ class _MoneyScreenState extends State<MoneyScreen> {
       itemName: _itemName.text.trim(),
       quantity: _category == ExpenseCategory.feed ? null : count,
       quantityKg: _category == ExpenseCategory.feed ? kilos : null,
-      feedType: _category == ExpenseCategory.feed ? _feedType : null,
+      feedType: _category == ExpenseCategory.feed
+          ? _itemName.text.trim()
+          : null,
       animalTag:
           _category == ExpenseCategory.vet &&
               _vetKind.toLowerCase() != 'vaccination'
@@ -188,7 +190,7 @@ class _MoneyScreenState extends State<MoneyScreen> {
         _ => null,
       },
       supplier: _supplier.text.trim(),
-      hasReceipt: _hasReceipt,
+      hasReceipt: _category == ExpenseCategory.feed ? false : _hasReceipt,
       locationId: _location,
       updatedAt: DateTime.now().toUtc(),
     );
@@ -204,7 +206,7 @@ class _MoneyScreenState extends State<MoneyScreen> {
       final bought = await widget.feed!.buy(
         FeedIngredient(
           id: newId(),
-          name: _feedType,
+          name: _itemName.text.trim(),
           stockKg: kilos ?? 0,
           unitCost: amount / kilos!,
           supplier: _supplier.text.trim(),
@@ -251,6 +253,7 @@ class _MoneyScreenState extends State<MoneyScreen> {
     setState(() {
       _readingReceipt = true;
       _error = null;
+      _readNote = null;
     });
     try {
       final photos = await _pickReceiptPhotos(source);
@@ -265,15 +268,15 @@ class _MoneyScreenState extends State<MoneyScreen> {
       }
       if (draft != null && draft.items.isNotEmpty) {
         _fillReceipt(draft);
-        final problem = _receiptProblem();
-        if (problem == null) {
-          await _saveReceipt();
-          return;
-        }
+        final supplier = draft.supplier.trim();
+        final count = draft.items.length;
         setState(() {
           _photoCount = photos.length;
           _hasReceipt = true;
-          _error = problem;
+          _error = null;
+          _readNote = supplier.isEmpty
+              ? 'Read $count items. Check them, then save.'
+              : 'Read $count items from $supplier. Check them, then save.';
         });
         return;
       }
@@ -355,14 +358,12 @@ class _MoneyScreenState extends State<MoneyScreen> {
 
   void _fillReceipt(ReceiptDraft draft) {
     final previous = [..._receiptLines];
-    final feed =
-        draft.category == 'feed' ||
-        draft.items.every(
-          (item) => feedTypes.any(
-            (type) => item.name.toLowerCase().contains(type.toLowerCase()),
-          ),
-        );
-    _category = feed ? ExpenseCategory.feed : ExpenseCategory.other;
+    final knownFeed =
+        draft.items.isNotEmpty &&
+        draft.items.every((item) => _knownFeed(item.name));
+    _category = draft.category == 'feed' || knownFeed
+        ? ExpenseCategory.feed
+        : ExpenseCategory.other;
     if (draft.supplier.isNotEmpty) {
       _supplier.text = draft.supplier;
     }
@@ -375,17 +376,6 @@ class _MoneyScreenState extends State<MoneyScreen> {
         line.dispose();
       }
     });
-  }
-
-  String? _receiptProblem() {
-    final receiptId = 'check';
-    for (final line in _receiptLines) {
-      final problem = expenseProblem(_recordForLine(line, receiptId));
-      if (problem != null) {
-        return problem;
-      }
-    }
-    return null;
   }
 
   void _fillSingleDraft(ReceiptDraft? draft) {
@@ -407,7 +397,6 @@ class _MoneyScreenState extends State<MoneyScreen> {
       }
       if (draft.note.isNotEmpty && line.item.text.trim().isEmpty) {
         line.item.text = draft.note;
-        line.feedType = _feedMatch(draft.note);
       }
       return;
     }
@@ -432,9 +421,12 @@ class _MoneyScreenState extends State<MoneyScreen> {
       itemName: item,
       quantity: _category == ExpenseCategory.feed ? null : qty,
       quantityKg: _category == ExpenseCategory.feed ? qty : null,
-      feedType: _category == ExpenseCategory.feed ? line.feedType : null,
+      feedType: _category == ExpenseCategory.feed ? item : null,
+      detail: _category == ExpenseCategory.feed ? line.group : null,
       supplier: _supplier.text.trim(),
-      hasReceipt: _photoCount > 0 || _hasReceipt,
+      hasReceipt: _category == ExpenseCategory.feed
+          ? false
+          : (_photoCount > 0 || _hasReceipt),
       locationId: line.locationId,
       receiptId: receiptId,
       updatedAt: DateTime.now().toUtc(),
@@ -472,6 +464,7 @@ class _MoneyScreenState extends State<MoneyScreen> {
             supplier: record.supplier,
             purchasedOn: _today,
             minimumKg: 0,
+            group: record.detail ?? '',
           ),
           DateTime.now(),
         );
@@ -503,6 +496,7 @@ class _MoneyScreenState extends State<MoneyScreen> {
     setState(() {
       _saving = false;
       _error = null;
+      _readNote = null;
       _amount.clear();
       _itemName.clear();
       _quantity.clear();
@@ -528,7 +522,9 @@ class _MoneyScreenState extends State<MoneyScreen> {
       return;
     }
     setState(() {
-      _receiptLines.add(_ReceiptLine(locationId: _receiptLines.last.locationId));
+      _receiptLines.add(
+        _ReceiptLine(locationId: _receiptLines.last.locationId),
+      );
     });
   }
 
@@ -919,6 +915,7 @@ class _MoneyScreenState extends State<MoneyScreen> {
                 controller: _itemName,
                 textCapitalization: TextCapitalization.sentences,
                 decoration: const InputDecoration(labelText: 'Item'),
+                onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 12),
               ..._categoryFields(theme),
@@ -949,6 +946,10 @@ class _MoneyScreenState extends State<MoneyScreen> {
                   hintText: 'Optional',
                 ),
               ),
+            ],
+            if (_readNote != null) ...[
+              const SizedBox(height: 12),
+              NoticeBanner(message: _readNote!),
             ],
             if (_error != null) ...[
               const SizedBox(height: 12),
@@ -1245,6 +1246,14 @@ class _MoneyScreenState extends State<MoneyScreen> {
     };
   }
 
+  double _receiptTotal() {
+    var total = 0.0;
+    for (final line in _receiptLines) {
+      total += double.tryParse(line.amount.text.trim()) ?? 0;
+    }
+    return total;
+  }
+
   List<Widget> _receiptFields(ThemeData theme) {
     return [
       for (var index = 0; index < _receiptLines.length; index++) ...[
@@ -1272,27 +1281,6 @@ class _MoneyScreenState extends State<MoneyScreen> {
               ),
           ],
         ),
-        if (_category == ExpenseCategory.feed) ...[
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              for (final type in feedTypes)
-                ChoiceChip(
-                  key: Key(
-                    index == 0
-                        ? 'expense-feed-${type.toLowerCase().replaceAll(' ', '-')}'
-                        : 'expense-feed-$index-${type.toLowerCase().replaceAll(' ', '-')}',
-                  ),
-                  label: Text(type),
-                  selected: _receiptLines[index].feedType == type,
-                  onSelected: (_) =>
-                      setState(() => _receiptLines[index].feedType = type),
-                ),
-            ],
-          ),
-        ],
         const SizedBox(height: 8),
         TextField(
           key: Key(
@@ -1300,8 +1288,37 @@ class _MoneyScreenState extends State<MoneyScreen> {
           ),
           controller: _receiptLines[index].item,
           textCapitalization: TextCapitalization.sentences,
-          decoration: const InputDecoration(labelText: 'Item'),
+          decoration: InputDecoration(
+            labelText: _category == ExpenseCategory.feed ? 'Feed name' : 'Item',
+          ),
+          onChanged: (_) => setState(() {
+            final line = _receiptLines[index];
+            if (!line.groupChosen) {
+              line.group = resourceCategoryFor(line.item.text);
+            }
+          }),
         ),
+        if (_category == ExpenseCategory.feed) ...[
+          const SizedBox(height: 8),
+          Text('Category', style: theme.textTheme.bodyMedium),
+          const SizedBox(height: 8),
+          Wrap(
+            key: Key(index == 0 ? 'feed-group' : 'feed-group-$index'),
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final name in resourceCategories)
+                ChoiceChip(
+                  label: Text(name),
+                  selected: _receiptLines[index].group == name,
+                  onSelected: (_) => setState(() {
+                    _receiptLines[index].group = name;
+                    _receiptLines[index].groupChosen = true;
+                  }),
+                ),
+            ],
+          ),
+        ],
         const SizedBox(height: 8),
         TextField(
           key: Key(
@@ -1327,6 +1344,7 @@ class _MoneyScreenState extends State<MoneyScreen> {
           keyboardType: TextInputType.number,
           style: theme.textTheme.headlineSmall,
           decoration: const InputDecoration(labelText: 'Cedis'),
+          onChanged: (_) => setState(() {}),
         ),
         if (_receiptLines.length > 1)
           Align(
@@ -1337,6 +1355,12 @@ class _MoneyScreenState extends State<MoneyScreen> {
             ),
           ),
       ],
+      const SizedBox(height: 12),
+      Text(
+        'Total ${formatCedis(_receiptTotal())}',
+        key: const Key('receipt-total'),
+        style: theme.textTheme.titleLarge,
+      ),
       Align(
         alignment: Alignment.centerLeft,
         child: TextButton(
@@ -1362,21 +1386,8 @@ class _MoneyScreenState extends State<MoneyScreen> {
   List<Widget> _categoryFields(ThemeData theme) {
     return switch (_category) {
       ExpenseCategory.feed => [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final type in feedTypes)
-              ChoiceChip(
-                key: Key(
-                  'expense-feed-${type.toLowerCase().replaceAll(' ', '-')}',
-                ),
-                label: Text(type),
-                selected: _feedType == type,
-                onSelected: (_) => setState(() => _feedType = type),
-              ),
-          ],
-        ),
+        if (_itemName.text.trim().isNotEmpty)
+          Text(resourceCategoryFor(_itemName.text)),
         const SizedBox(height: 12),
         TextField(
           key: const Key('expense-kilos'),
@@ -1780,7 +1791,7 @@ List<(String, String)> _expenseFacts(ExpenseRecord row) {
     ('Amount', formatCedis(row.amountCedis)),
     if (row.note.trim().isNotEmpty) ('Note', row.note.trim()),
     if (row.feedType != null && row.feedType!.isNotEmpty)
-      ('Feed', row.feedType!),
+      ('Group', ingredientGroup(name: row.feedType!, saved: row.detail ?? '')),
     if (row.quantityKg != null && row.quantityKg! > 0)
       ('Kilos', formatKg(row.quantityKg!)),
     if (row.animalTag != null && row.animalTag!.trim().isNotEmpty)
@@ -1789,7 +1800,9 @@ List<(String, String)> _expenseFacts(ExpenseRecord row) {
     if (row.days != null) ('Days', _plainDays(row.days!)),
     if (row.litres != null && row.litres! > 0)
       ('Litres', formatLitres(row.litres!)),
-    if (row.detail != null && row.detail!.trim().isNotEmpty)
+    if (row.category != ExpenseCategory.feed &&
+        row.detail != null &&
+        row.detail!.trim().isNotEmpty)
       ('Detail', row.detail!.trim()),
     if (row.supplier.trim().isNotEmpty) ('Supplier', row.supplier.trim()),
     ('Place', siteName(row.locationId)),
@@ -1887,20 +1900,27 @@ class _ReceiptLine {
     : item = TextEditingController(),
       quantity = TextEditingController(),
       amount = TextEditingController(),
-      feedType = feedTypes.first;
+      group = 'Other',
+      groupChosen = false;
 
   _ReceiptLine.fromItem(ReceiptItem item, {required String fallback})
     : item = TextEditingController(text: item.name),
       quantity = TextEditingController(text: _plainAmount(item.quantity)),
       amount = TextEditingController(text: _plainAmount(item.amountCedis)),
-      feedType = _feedMatch(item.name),
-      locationId = _siteId(item.site, fallback);
+      locationId = _siteId(item.site, fallback),
+      group = item.group.trim().isEmpty
+          ? resourceCategoryFor(item.name)
+          : item.group,
+      groupChosen = item.group.trim().isNotEmpty;
 
   final TextEditingController item;
   final TextEditingController quantity;
   final TextEditingController amount;
-  String feedType;
   String locationId;
+  String group;
+
+  /// True after a person or the receipt reader picks the group.
+  bool groupChosen;
 
   void dispose() {
     item.dispose();
@@ -1946,14 +1966,8 @@ String _siteId(String raw, String fallback) {
   return allSitesId;
 }
 
-String _feedMatch(String name) {
-  final lower = name.toLowerCase();
-  for (final type in feedTypes) {
-    if (lower.contains(type.toLowerCase())) {
-      return type;
-    }
-  }
-  return feedTypes.first;
+bool _knownFeed(String name) {
+  return name.trim().isNotEmpty && resourceCategoryFor(name) != 'Other';
 }
 
 String _plainDays(double value) {

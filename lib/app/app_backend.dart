@@ -63,8 +63,14 @@ class AppBackend {
   }
 
   static Future<AppBackend> start(AppConfig config) async {
+    final preferences = await SharedPreferences.getInstance();
+    final store = PreferencesStore(preferences);
+    await clearSampleFarm(store);
     if (!config.hasSupabase) {
-      return _local(config.partialSupabaseNotice);
+      return AppBackend.local(
+        store,
+        startupNotice: config.partialSupabaseNotice,
+      );
     }
     try {
       await Supabase.initialize(
@@ -72,15 +78,14 @@ class AppBackend {
         publishableKey: config.supabaseAnonKey,
       ).timeout(const Duration(seconds: 8));
     } catch (_) {
-      return _local(
-        'Supabase did not start, so this session is using on-device records.',
+      return AppBackend.local(
+        store,
+        startupNotice: 'Supabase did not start, so this session is using on-device records.',
       );
     }
     final client = Supabase.instance.client;
     final auth = SupabaseAuthRepository(client);
     String? currentUser() => auth.session?.userId;
-    final preferences = await SharedPreferences.getInstance();
-    final store = PreferencesStore(preferences);
     return AppBackend(
       auth: auth,
       animals: OfflineFirstAnimalRepository(
@@ -97,12 +102,5 @@ class AppBackend {
       sync: SupabaseSyncTarget(client),
       localOnly: false,
     );
-  }
-
-  static Future<AppBackend> _local(String? notice) async {
-    final preferences = await SharedPreferences.getInstance();
-    final store = PreferencesStore(preferences);
-    await seedSampleFarm(store);
-    return AppBackend.local(store, startupNotice: notice);
   }
 }

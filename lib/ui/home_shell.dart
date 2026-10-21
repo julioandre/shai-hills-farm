@@ -180,75 +180,89 @@ class _HomeShellState extends State<HomeShell> {
         };
         void openPage(int page) => setState(() => _index = page);
         final stack = IndexedStack(index: index, children: pages);
-        return Scaffold(
-          appBar: AppBar(
-            automaticallyImplyLeading: false,
-            leading: wide ? const SizedBox(width: 104) : null,
-            leadingWidth: wide ? 104 : 0,
-            titleSpacing: 16,
-            title: Row(
-              children: [
-                const FarmLogo(width: 36),
-                const SizedBox(width: 12),
-                Text(title),
-              ],
-            ),
-            actions: [
-              PopupMenuButton<String>(
-                key: const Key('account-menu'),
-                tooltip: 'Account',
-                onSelected: (value) {
-                  if (value == 'people') {
-                    _openPeople();
-                  }
-                  if (value == 'sign-out') {
-                    unawaited(_signOut());
-                  }
-                },
-                itemBuilder: (context) => [
-                  if (access.manageUsers)
-                    const PopupMenuItem(
-                      key: Key('people-menu'),
-                      value: 'people',
-                      child: Text('People'),
-                    ),
-                  const PopupMenuItem(
-                    key: Key('sign-out-menu'),
-                    value: 'sign-out',
-                    child: Text('Sign out'),
-                  ),
-                ],
+        final accountMenu = PopupMenuButton<String>(
+          key: const Key('account-menu'),
+          tooltip: 'Account',
+          onSelected: (value) {
+            if (value == 'people') {
+              _openPeople();
+            }
+            if (value == 'sign-out') {
+              unawaited(_signOut());
+            }
+          },
+          itemBuilder: (context) => [
+            if (access.manageUsers)
+              const PopupMenuItem(
+                key: Key('people-menu'),
+                value: 'people',
+                child: Text('People'),
               ),
-            ],
-          ),
-          body: wide
-              ? Row(
-                  children: [
-                    _FarmRail(
-                      index: index,
-                      showMoney: showMoney,
-                      onSelected: openPage,
-                    ),
-                    const VerticalDivider(width: 1),
-                    Expanded(child: stack),
-                  ],
-                )
-              : stack,
-          floatingActionButton: index == animalIndex
-              ? FloatingActionButton.extended(
-                  key: const Key('add-animal'),
-                  onPressed: _openNewAnimal,
-                  icon: const Icon(Icons.add),
-                  label: const Text('Register animal'),
-                )
-              : null,
-          bottomNavigationBar: wide
-              ? null
-              : _PhoneBar(
+            const PopupMenuItem(
+              key: Key('sign-out-menu'),
+              value: 'sign-out',
+              child: Text('Sign out'),
+            ),
+          ],
+        );
+        AppBar appBar({required bool includeLogo}) {
+          return AppBar(
+            automaticallyImplyLeading: false,
+            titleSpacing: 16,
+            title: includeLogo
+                ? Row(
+                    children: [
+                      const FarmLogo(width: 36),
+                      const SizedBox(width: 12),
+                      Text(title),
+                    ],
+                  )
+                : Text(title),
+            actions: [accountMenu],
+          );
+        }
+
+        final registerButton = index == animalIndex
+            ? FloatingActionButton.extended(
+                key: const Key('add-animal'),
+                onPressed: _openNewAnimal,
+                icon: const Icon(Icons.add),
+                label: const Text('Register animal'),
+              )
+            : null;
+        if (wide) {
+          return Scaffold(
+            floatingActionButton: registerButton,
+            body: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _FarmRail(
                   index: index,
                   showMoney: showMoney,
                   onSelected: openPage,
                 ),
+                const VerticalDivider(width: 1),
+                Expanded(
+                  child: Column(
+                    children: [
+                      appBar(includeLogo: false),
+                      Expanded(child: stack),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+        return Scaffold(
+          appBar: appBar(includeLogo: true),
+          body: stack,
+          floatingActionButton: registerButton,
+          bottomNavigationBar: _PhoneBar(
+            index: index,
+            showMoney: showMoney,
+            onSelected: openPage,
+          ),
         );
       },
     );
@@ -274,7 +288,10 @@ class _FarmRail extends StatelessWidget {
         width: 104,
         child: Column(
           children: [
-            const SizedBox(height: 8),
+            const Padding(
+              padding: EdgeInsets.fromLTRB(8, 12, 8, 4),
+              child: FarmLogo(width: 84),
+            ),
             Expanded(
               child: NavigationRail(
                 selectedIndex: index,

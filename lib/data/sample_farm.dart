@@ -92,6 +92,79 @@ Future<void> seedSampleFarm(KeyValueStore store) async {
   }
 }
 
+/// Drops the practice herd, book, money, and starter mill. Real records stay.
+Future<void> clearSampleFarm(KeyValueStore store) async {
+  const reader = 'sample';
+  final animals = LocalAnimalRepository(store: store, userId: () => reader);
+  final herd = await animals.list();
+  if (herd.any((animal) => animal.id.startsWith('sample-'))) {
+    await animals.replaceSample(const []);
+  }
+
+  final ledgerStore = LocalLedgerRepository(store);
+  final current = await ledgerStore.read();
+  final cleared = current.copyWith(
+    births: _dropSample(current.births, (row) => row.id),
+    deaths: _dropSample(current.deaths, (row) => row.id),
+    feedUses: _dropSample(current.feedUses, (row) => row.id),
+    purchases: _dropSample(current.purchases, (row) => row.id),
+    breeding: _dropSample(current.breeding, (row) => row.id),
+    weights: _dropSample(current.weights, (row) => row.id),
+    health: _dropSample(current.health, (row) => row.id),
+    sales: _dropSample(current.sales, (row) => row.id),
+    expenses: _dropSample(current.expenses, (row) => row.id),
+    milk: _dropSample(current.milk, (row) => row.id),
+    land: _dropSample(current.land, (row) => row.id),
+  );
+  if (_ledgerChanged(current, cleared)) {
+    await ledgerStore.replace(cleared);
+  }
+
+  final book = LocalBookRepository(store: store, userId: () => reader);
+  for (final entry in await book.list()) {
+    if (entry.id.startsWith('sample-')) {
+      await book.remove(entry.id);
+    }
+  }
+
+  final feedStore = LocalFeedRepository(store);
+  final feed = await feedStore.read();
+  final hasRows =
+      feed.ingredients.isNotEmpty ||
+      feed.formulas.isNotEmpty ||
+      feed.batches.isNotEmpty ||
+      feed.issues.isNotEmpty;
+  final onlyStarter =
+      feed.ingredients.every((row) => row.id.startsWith('ing-')) &&
+      feed.formulas.every((row) => row.id.startsWith('recipe-')) &&
+      feed.batches.every((row) => row.id.startsWith('batch-')) &&
+      feed.issues.every((row) => row.id.startsWith('issue-'));
+  if (hasRows && onlyStarter) {
+    await feedStore.write(FeedMill.empty);
+  }
+}
+
+List<T> _dropSample<T>(List<T> rows, String Function(T row) id) {
+  return [
+    for (final row in rows)
+      if (!id(row).startsWith('sample-')) row,
+  ];
+}
+
+bool _ledgerChanged(FarmLedger current, FarmLedger cleared) {
+  return current.births.length != cleared.births.length ||
+      current.deaths.length != cleared.deaths.length ||
+      current.feedUses.length != cleared.feedUses.length ||
+      current.purchases.length != cleared.purchases.length ||
+      current.breeding.length != cleared.breeding.length ||
+      current.weights.length != cleared.weights.length ||
+      current.health.length != cleared.health.length ||
+      current.sales.length != cleared.sales.length ||
+      current.expenses.length != cleared.expenses.length ||
+      current.milk.length != cleared.milk.length ||
+      current.land.length != cleared.land.length;
+}
+
 List<Animal> _animals(DateTime updatedAt) {
   final herd = <Animal>[];
 

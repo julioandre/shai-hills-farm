@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shai_hills_farm/data/local_feed_repository.dart';
+import 'package:shai_hills_farm/domain/animal.dart';
 import 'package:shai_hills_farm/domain/failures.dart';
 import 'package:shai_hills_farm/domain/feed_mill.dart';
 import 'package:shai_hills_farm/domain/ids.dart';
@@ -61,6 +62,31 @@ class FeedController extends ChangeNotifier {
 
   Future<String?> give(FeedIssue issue, DateTime today) {
     return _save((mill) => giveFeed(mill, issue, today));
+  }
+
+  Future<String?> giveFinished({
+    required String id,
+    required String formulaName,
+    required double quantityKg,
+    required DateTime issuedOn,
+    required Species species,
+    required String pen,
+    required String group,
+    required DateTime today,
+  }) {
+    return _save(
+      (mill) => giveFinishedFeed(
+        mill,
+        id: id,
+        formulaName: formulaName,
+        quantityKg: quantityKg,
+        issuedOn: issuedOn,
+        species: species,
+        pen: pen,
+        group: group,
+        today: today,
+      ),
+    );
   }
 
   void clear() {

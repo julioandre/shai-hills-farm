@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shai_hills_farm/data/local_animal_repository.dart';
+import 'package:shai_hills_farm/data/local_feed_repository.dart';
 import 'package:shai_hills_farm/data/local_ledger_repository.dart';
 import 'package:shai_hills_farm/data/memory_store.dart';
 import 'package:shai_hills_farm/data/sample_farm.dart';
@@ -120,5 +121,33 @@ void main() {
       userId: () => 'reader',
     ).list();
     expect(HerdCounts.fromAnimals(animals).pigs, 1000);
+  });
+
+  test('clearing the sample farm keeps an animal the farm added', () async {
+    final store = MemoryStore();
+    await seedSampleFarm(store);
+    final animals = LocalAnimalRepository(store: store, userId: () => 'reader');
+    await animals.save(
+      Animal(
+        id: 'own-sow',
+        tag: 'SOW-KEEP',
+        species: Species.pig,
+        sex: Sex.female,
+        status: AnimalStatus.onFarm,
+        updatedAt: DateTime.utc(2026, 10, 21),
+      ),
+    );
+
+    await clearSampleFarm(store);
+
+    final left = await animals.list();
+    expect(left.map((animal) => animal.tag), ['SOW-KEEP']);
+    final ledger = await LocalLedgerRepository(store).read();
+    expect(ledger.sales, isEmpty);
+    expect(ledger.expenses, isEmpty);
+    expect(ledger.births, isEmpty);
+    final feed = await LocalFeedRepository(store).read();
+    expect(feed.ingredients, isEmpty);
+    expect(feed.formulas, isEmpty);
   });
 }

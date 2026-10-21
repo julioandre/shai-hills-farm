@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shai_hills_farm/domain/animal.dart';
+import 'package:shai_hills_farm/domain/farm_scope.dart';
 import 'package:shai_hills_farm/domain/feed_stock.dart';
 import 'package:shai_hills_farm/domain/ledger.dart';
 import 'package:shai_hills_farm/domain/receipt_draft.dart';
@@ -73,5 +74,19 @@ void main() {
     expect(lines!.items, hasLength(2));
     expect(lines.items.first.quantity, 40);
     expect(lines.items.last.site, 'all');
+    expect(lines.items.first.group, isEmpty);
+  });
+
+  test('a feed group is kept, and an unknown group becomes Other', () {
+    expect(resourceCategoryFor('Maize bran'), 'Energy source');
+    expect(resourceCategoryFor('Premix'), 'Additives');
+    expect(resourceCategoryFor('Cerelac'), 'Cerelac');
+    expect(resourceCategoryFor('Napier grass'), 'Forage');
+    expect(resourceCategoryFor('Dicalcium phosphate'), 'Other');
+    final lines = parseReceiptText(
+      '{"supplier":"Tema mill","category":"feed","items":[{"name":"Mystery mix","quantity":4,"amount":20,"group":"Additives"},{"name":"Thing","quantity":1,"amount":5,"group":"nope"}]}',
+    );
+    expect(lines!.items.first.group, 'Additives');
+    expect(lines.items.last.group, 'Other');
   });
 }

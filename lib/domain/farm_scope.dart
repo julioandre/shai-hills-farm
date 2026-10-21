@@ -68,8 +68,104 @@ const feedTypes = [
   'Wheat bran',
   'Salt',
   'Concentrate',
+  'Premix',
+  'Cerelac',
   'Forage',
 ];
+
+/// Groups a feed name falls into. Other is for a name that does not fit.
+const resourceCategories = [
+  'Energy source',
+  'Forage',
+  'Additives',
+  'Cerelac',
+  'Other',
+];
+
+/// The closest feed group for a written name. Unknown names are Other.
+String resourceCategoryFor(String name) {
+  final lower = name.trim().toLowerCase();
+  if (lower.isEmpty) {
+    return 'Other';
+  }
+  if (lower.contains('cerelac')) {
+    return 'Cerelac';
+  }
+  if (lower.contains('forage') ||
+      lower.contains('hay') ||
+      lower.contains('napier') ||
+      lower.contains('grass') ||
+      lower.contains('silage')) {
+    return 'Forage';
+  }
+  if (lower.contains('premix') ||
+      lower.contains('salt') ||
+      lower.contains('limestone') ||
+      lower.contains('lysine') ||
+      lower.contains('additive') ||
+      lower.contains('vitamin') ||
+      lower.contains('mineral') ||
+      lower.contains('toxin')) {
+    return 'Additives';
+  }
+  const energy = [
+    'maize',
+    'corn',
+    'soy',
+    'wheat',
+    'bran',
+    'palm',
+    'kernel',
+    'fish',
+    'concentrate',
+    'cassava',
+    'rice',
+  ];
+  if (energy.any(lower.contains)) {
+    return 'Energy source';
+  }
+  return 'Other';
+}
+
+/// A group written by a person or a receipt reader, or empty when missing.
+String normalizeResourceCategory(String raw) {
+  final lower = raw.trim().toLowerCase();
+  if (lower.isEmpty) {
+    return '';
+  }
+  for (final name in resourceCategories) {
+    if (name.toLowerCase() == lower) {
+      return name;
+    }
+  }
+  if (lower.contains('energy') ||
+      lower.contains('grain') ||
+      lower.contains('cereal')) {
+    return 'Energy source';
+  }
+  if (lower.contains('forage') || lower.contains('roughage')) {
+    return 'Forage';
+  }
+  if (lower.contains('additive') ||
+      lower.contains('premix') ||
+      lower.contains('mineral') ||
+      lower.contains('vitamin')) {
+    return 'Additives';
+  }
+  if (lower.contains('cerelac')) {
+    return 'Cerelac';
+  }
+  return 'Other';
+}
+
+/// The group saved with the ingredient, or a guess from the name.
+String ingredientGroup({required String name, String saved = ''}) {
+  final chosen = saved.trim();
+  if (resourceCategories.contains(chosen)) {
+    return chosen;
+  }
+  return resourceCategoryFor(name);
+}
 
 /// What a vet bill was for. The amount is stored against this, not only "Vet".
 const vetKinds = ['Vaccination', 'Treatment', 'Deworming', 'Visit'];

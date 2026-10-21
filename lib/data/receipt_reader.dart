@@ -25,7 +25,7 @@ class ReceiptReader {
       return null;
     }
     final uri = Uri.parse(
-      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=$key',
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=$key',
     );
     final response = await http
         .post(
@@ -36,7 +36,7 @@ class ReceiptReader {
               {
                 'parts': [
                   {
-                    'text': 'These photos are pages of one farm receipt from Ghana. Reply with JSON only, no markdown: {"supplier":"","category":"feed","items":[{"name":"","quantity":0,"amount":0,"site":"all"}]}. category is feed when the lines are animal feed, otherwise other. quantity is kilos for feed and a count for other goods. amount is the cedis for that line, not a guess. site is piggery, cattle_poultry, or all when the line is for the whole farm. Leave a field empty if you cannot read it.',
+                    'text': 'These photos are pages of one farm receipt from Ghana. Reply with JSON only, no markdown: {"supplier":"","category":"feed","items":[{"name":"","quantity":0,"amount":0,"site":"all","group":"Other"}]}. category is feed when the lines are animal feed, including premix and Cerelac, otherwise other. group is the closest of Energy source, Forage, Additives, Cerelac, or Other. Use Other only when you cannot tell which group a feed line belongs to. quantity is kilos for feed and a count for other goods. amount is the cedis for that line, not a guess. site is piggery, cattle_poultry, or all when the line is for the whole farm. Leave a field empty if you cannot read it.',
                   },
                   for (final bytes in images)
                     {
@@ -72,10 +72,13 @@ class ReceiptReader {
         (parts['parts'] as List).isEmpty) {
       return null;
     }
-    final first = (parts['parts'] as List).first;
-    if (first is! Map || first['text'] is! String) {
+    final text = [
+      for (final part in parts['parts'] as List)
+        if (part is Map && part['text'] is String) part['text'] as String,
+    ].join('\n');
+    if (text.trim().isEmpty) {
       return null;
     }
-    return parseReceiptText(first['text'] as String);
+    return parseReceiptText(text);
   }
 }

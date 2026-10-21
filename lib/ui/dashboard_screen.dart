@@ -18,6 +18,7 @@ import 'package:shai_hills_farm/state/herd_controller.dart';
 import 'package:shai_hills_farm/state/ledger_controller.dart';
 import 'package:shai_hills_farm/state/task_controller.dart';
 import 'package:shai_hills_farm/theme/farm_theme.dart';
+import 'package:shai_hills_farm/ui/card_grid.dart';
 import 'package:shai_hills_farm/ui/farm_charts.dart';
 import 'package:shai_hills_farm/ui/page_box.dart';
 import 'package:shai_hills_farm/ui/range_menu.dart';
@@ -112,7 +113,7 @@ class DashboardScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
           ],
-          _FarmHeader(phone: phone),
+          _FarmHeader(phone: phone, userId: userId, auth: auth),
           const SizedBox(height: 16),
           if (role != FarmRole.worker) ...[
             _TodayBrief(
@@ -225,45 +226,16 @@ class _TodayBrief extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final today = DateTime.now();
+    final day = DateTime(today.year, today.month, today.day);
+    final weekStart = day.subtract(Duration(days: day.weekday - 1));
+    final monthStart = DateTime(day.year, day.month);
     final kpis = FarmKpis.evaluate(
       animals: animals,
       ledger: ledger,
       today: today,
     );
     final tone = _tone(kpis, showMoney);
-    final quietMoney = kpis.salesToday == 0 && kpis.spentToday == 0;
-    final cards = <Widget>[
-      if (showMoney) ...[
-        _PulseCard(
-          label: 'Came in',
-          value: quietMoney ? 'None yet' : formatCedis(kpis.salesToday),
-        ),
-        _PulseCard(
-          label: 'Went out',
-          value: quietMoney ? 'None yet' : formatCedis(kpis.spentToday),
-        ),
-        _PulseCard(
-          label: 'Left today',
-          value: quietMoney ? 'None yet' : formatCedis(kpis.profitToday),
-          valueColor: quietMoney
-              ? null
-              : (kpis.profitToday < 0 ? farmBarn : farmLeaf),
-        ),
-      ],
-      _PulseCard(
-        label: 'Feed used',
-        value: kpis.feedKgToday <= 0
-            ? 'None recorded'
-            : formatKg(kpis.feedKgToday),
-      ),
-      if (showMoney && kpis.bestEnterprise != null)
-        _PulseCard(label: 'Best', value: kpis.bestEnterprise!.label),
-      if (showMoney && kpis.worstEnterprise != null)
-        _PulseCard(label: 'Weakest', value: kpis.worstEnterprise!.label),
-    ];
     final notes = <String>[
-      if (showMoney)
-        'This month ${formatCedis(kpis.revenue)} came in. ${formatCedis(kpis.grossMargin)} is left after feed and other costs.',
       if (kpis.sowScores.isNotEmpty) 'Best sow: ${kpis.sowScores.first.damTag}',
       for (final item in kpis.attention.take(2)) item.title,
       if (ledger.pendingCount > 0)
@@ -272,8 +244,6 @@ class _TodayBrief extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Today', style: Theme.of(context).textTheme.titleLarge),
-        const SizedBox(height: 8),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
@@ -288,8 +258,27 @@ class _TodayBrief extends StatelessWidget {
                 ?.copyWith(color: tone.color, fontWeight: FontWeight.w700),
           ),
         ),
-        const SizedBox(height: 10),
-        Wrap(spacing: 8, runSpacing: 8, children: cards),
+        const SizedBox(height: 16),
+        CardGrid(
+          minWidth: 240,
+          children: [
+            _PeriodCard(
+              title: 'Today',
+              totals: _totalsBetween(ledger, day, day),
+              showMoney: showMoney,
+            ),
+            _PeriodCard(
+              title: 'This week',
+              totals: _totalsBetween(ledger, weekStart, day),
+              showMoney: showMoney,
+            ),
+            _PeriodCard(
+              title: 'This month',
+              totals: _totalsBetween(ledger, monthStart, day),
+              showMoney: showMoney,
+            ),
+          ],
+        ),
         if (notes.isNotEmpty) ...[
           const SizedBox(height: 10),
           Text(
@@ -298,6 +287,98 @@ class _TodayBrief extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _PeriodTotals {
+  const _PeriodTotals({
+    required this.revenue,
+    required this.expenses,
+    required this.feedKg,
+  });
+
+  final double revenue;
+  final double expenses;
+  final double feedKg;
+
+  double get profit => revenue - expenses;
+}
+
+_PeriodTotals _totalsBetween(FarmLedger ledger, DateTime start, DateTime end) {
+  var revenue = 0.0;
+  var expenses = 0.0;
+  var feedKg = 0.0;
+  for (final sale in ledger.sales) {
+    if (_inSpan(sale.happenedOn, start, end)) {
+      revenue += sale.amountCedis;
+    }
+  }
+  for (final expense in ledger.expenses) {
+    if (_inSpan(expense.happenedOn, start, end)) {
+      expenses += expense.amountCedis;
+    }
+  }
+  for (final use in ledger.feedUses) {
+    if (_inSpan(use.happenedOn, start, end)) {
+      feedKg += use.quantityKg;
+    }
+  }
+  return _PeriodTotals(revenue: revenue, expenses: expenses, feedKg: feedKg);
+}
+
+bool _inSpan(DateTime day, DateTime start, DateTime end) {
+  final date = DateTime(day.year, day.month, day.day);
+  final from = DateTime(start.year, start.month, start.day);
+  final to = DateTime(end.year, end.month, end.day);
+  return !date.isBefore(from) && !date.isAfter(to);
+}
+
+class _PeriodCard extends StatelessWidget {
+  const _PeriodCard({
+    required this.title,
+    required this.totals,
+    required this.showMoney,
+  });
+
+  final String title;
+  final _PeriodTotals totals;
+  final bool showMoney;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final profit = totals.profit;
+    final lines = <(String, String, Color)>[
+      if (showMoney)
+        ('Profit/loss', formatCedis(profit), profit < 0 ? farmBarn : farmLeaf),
+      if (showMoney) ('Revenue', formatCedis(totals.revenue), farmLeaf),
+      if (showMoney) ('Expenses', formatCedis(totals.expenses), farmBarn),
+      ('Feed used', formatKg(totals.feedKg), farmGold),
+    ];
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: theme.textTheme.titleLarge),
+            const SizedBox(height: 10),
+            for (final line in lines) ...[
+              Text(line.$1, style: theme.textTheme.bodyMedium),
+              Text(
+                line.$2,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  color: line.$3,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -326,41 +407,6 @@ _FarmTone _tone(FarmKpis kpis, bool showMoney) {
     return const _FarmTone('Something needs a look today.', farmGold);
   }
   return const _FarmTone('The farm is steady today.', farmLeaf);
-}
-
-class _PulseCard extends StatelessWidget {
-  const _PulseCard({required this.label, required this.value, this.valueColor});
-
-  final String label;
-  final String value;
-  final Color? valueColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 148,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: farmPaper,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: farmLine),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: Theme.of(context).textTheme.bodyMedium),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w700,
-              color: valueColor ?? farmInk,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _HomeCharts extends StatelessWidget {
@@ -589,21 +635,63 @@ String _dayLabel(DateTime day, DateTime today) {
   return formatFarmDate(date);
 }
 
-class _FarmHeader extends StatelessWidget {
-  const _FarmHeader({required this.phone});
+class _FarmHeader extends StatefulWidget {
+  const _FarmHeader({
+    required this.phone,
+    required this.userId,
+    required this.auth,
+  });
 
   final String phone;
+  final String userId;
+  final AuthController auth;
+
+  @override
+  State<_FarmHeader> createState() => _FarmHeaderState();
+}
+
+class _FarmHeaderState extends State<_FarmHeader> {
+  String _name = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final people = await widget.auth.listPeople();
+      if (!mounted) {
+        return;
+      }
+      final wanted = normalizePhone(widget.phone);
+      for (final person in people) {
+        final samePerson =
+            person.userId == widget.userId ||
+            (wanted != null && normalizePhone(person.phone) == wanted);
+        if (samePerson && person.name.trim().isNotEmpty) {
+          setState(() => _name = person.name.trim());
+          return;
+        }
+      }
+    } catch (_) {}
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final named = _name.isNotEmpty;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Welcome', style: theme.textTheme.headlineMedium),
+        Text(
+          named ? 'Welcome $_name' : 'Welcome',
+          style: theme.textTheme.headlineMedium,
+        ),
         const SizedBox(height: 4),
         Text(
-          displayPhone(phone),
+          displayPhone(widget.phone),
           key: const Key('welcome-user'),
           style: theme.textTheme.titleMedium,
         ),

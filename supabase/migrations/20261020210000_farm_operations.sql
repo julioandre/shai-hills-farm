@@ -27,9 +27,8 @@ create table public.sites (
   name text not null
 );
 
-insert into public.sites (id, name) values
-  ('main', 'Main yard'),
-  ('north', 'North pasture');
+-- Real yards are added in 20261020240000_farmos_sites.sql.
+-- All sites is added in 20261021140000_expense_receipt.sql.
 
 alter table public.animals drop constraint if exists animals_status_check;
 alter table public.animals
@@ -52,7 +51,7 @@ create table public.births (
   id uuid primary key,
   user_id uuid not null references auth.users (id) on delete cascade,
   happened_on date not null,
-  species text not null check (species in ('pig', 'cattle', 'goat', 'poultry')),
+  species text not null check (species in ('pig', 'cattle', 'goat', 'sheep', 'poultry')),
   dam_tag text not null,
   sire_tag text,
   born_alive integer not null check (born_alive >= 0),
@@ -66,7 +65,7 @@ create table public.mortalities (
   user_id uuid not null references auth.users (id) on delete cascade,
   happened_on date not null,
   animal_tag text not null,
-  species text not null check (species in ('pig', 'cattle', 'goat', 'poultry')),
+  species text not null check (species in ('pig', 'cattle', 'goat', 'sheep', 'poultry')),
   cause text not null,
   location_id text not null references public.sites (id),
   age_days integer,
@@ -90,7 +89,7 @@ create table public.feed_uses (
   user_id uuid not null references auth.users (id) on delete cascade,
   happened_on date not null,
   location_id text not null references public.sites (id),
-  species text not null check (species in ('pig', 'cattle', 'goat', 'poultry')),
+  species text not null check (species in ('pig', 'cattle', 'goat', 'sheep', 'poultry')),
   feed_type text not null,
   quantity_kg numeric(12, 2) not null check (quantity_kg > 0),
   updated_at timestamptz not null default now()
@@ -99,7 +98,7 @@ create table public.feed_uses (
 create table public.breeding_services (
   id uuid primary key,
   user_id uuid not null references auth.users (id) on delete cascade,
-  species text not null check (species in ('pig', 'cattle', 'goat', 'poultry')),
+  species text not null check (species in ('pig', 'cattle', 'goat', 'sheep', 'poultry')),
   dam_tag text not null,
   sire_tag text,
   service_kind text not null check (service_kind in ('natural', 'ai')),
@@ -130,7 +129,7 @@ create table public.weight_records (
   id uuid primary key,
   user_id uuid not null references auth.users (id) on delete cascade,
   animal_tag text not null,
-  species text not null check (species in ('pig', 'cattle', 'goat', 'poultry')),
+  species text not null check (species in ('pig', 'cattle', 'goat', 'sheep', 'poultry')),
   weighed_on date not null,
   weight_kg numeric(8, 2) not null check (weight_kg > 0),
   updated_at timestamptz not null default now()
@@ -141,7 +140,7 @@ create table public.sales (
   user_id uuid not null references auth.users (id) on delete cascade,
   happened_on date not null,
   kind text not null check (kind in ('livestock', 'poultry', 'milk', 'feed', 'breeding_stock')),
-  enterprise text not null check (enterprise in ('pig', 'beef', 'dairy', 'poultry', 'goat')),
+  enterprise text not null check (enterprise in ('pig', 'beef', 'dairy', 'poultry', 'goat', 'general')),
   location_id text not null references public.sites (id),
   amount_cedis numeric(12, 2) not null check (amount_cedis > 0),
   quantity numeric(12, 2),

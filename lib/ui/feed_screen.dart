@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shai_hills_farm/domain/animal.dart';
 import 'package:shai_hills_farm/domain/farm_entry.dart';
+import 'package:shai_hills_farm/domain/farm_scope.dart';
 import 'package:shai_hills_farm/domain/farm_visuals.dart';
 import 'package:shai_hills_farm/domain/feed_mill.dart';
 import 'package:shai_hills_farm/domain/traceability.dart';
@@ -11,6 +12,7 @@ import 'package:shai_hills_farm/ui/card_grid.dart';
 import 'package:shai_hills_farm/ui/farm_charts.dart';
 import 'package:shai_hills_farm/ui/page_box.dart';
 import 'package:shai_hills_farm/ui/feed_form_screen.dart';
+import 'package:shai_hills_farm/ui/range_menu.dart';
 import 'package:shai_hills_farm/ui/species_style.dart';
 import 'package:shai_hills_farm/ui/status_views.dart';
 
@@ -38,6 +40,46 @@ class FeedScreen extends StatefulWidget {
 }
 
 class _FeedScreenState extends State<FeedScreen> {
+  ChartPreset _preset = ChartPreset.year;
+  bool _custom = false;
+  DateTime? _customStart;
+  DateTime? _customEnd;
+
+  ChartWindow _window(DateTime today) {
+    if (_custom && _customStart != null && _customEnd != null) {
+      return windowFor(
+        FarmPeriod.year,
+        today,
+        customStart: _customStart,
+        customEnd: _customEnd,
+      );
+    }
+    return presetWindow(_preset, today);
+  }
+
+  Future<void> _pickRange() async {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(today.year - 5),
+      lastDate: today,
+      initialDateRange: DateTimeRange(
+        start: _customStart ?? today.subtract(const Duration(days: 29)),
+        end: _customEnd ?? today,
+      ),
+      helpText: 'Choose dates',
+      saveText: 'Use these dates',
+    );
+    if (picked == null || !mounted) {
+      return;
+    }
+    setState(() {
+      _custom = true;
+      _customStart = picked.start;
+      _customEnd = picked.end;
+    });
+  }
+
   Future<void> _open(FeedTask task, {FeedFormula? formula}) {
     return Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -101,7 +143,11 @@ class _FeedScreenState extends State<FeedScreen> {
     );
     final theme = Theme.of(context);
     final ready = stock.mixtures;
-    final boughtKg = stock.ingredients.fold<double>(
+    final finishedLows = [
+      for (final row in finishedFeed(mill))
+        if (row.low) row,
+    ];
+    final leftKg = stock.ingredients.fold<double>(
       0,
       (sum, row) => sum + row.leftKg,
     );
@@ -112,19 +158,12 @@ class _FeedScreenState extends State<FeedScreen> {
       children: [
         Text(
           widget.canManage
-              ? 'Record a feed purchase on Money. Mix it from what is in the store, then give that mixture to the animals. The kilos below are what is still here after feed use recorded on the farm.'
-              : 'Mix a batch from the feed in the store, then give it to your animals. The kilos below are what is still here after feed use recorded on the farm.',
+              ? 'Buy feed on Money, mix it, then give it out.'
+              : 'Mix feed, then give it out.',
           style: theme.textTheme.bodyMedium,
         ),
-        if (boughtKg > 0 || mixtureKg > 0) ...[
-          const SizedBox(height: 8),
-          Text(
-            mixtureKg > 0
-                ? '${formatKg(boughtKg)} of feed bought. ${formatKg(mixtureKg)} of mixture ready.'
-                : '${formatKg(boughtKg)} of feed bought. No mixture is ready.',
-            style: theme.textTheme.titleMedium,
-          ),
-        ],
+        const SizedBox(height: 12),
+        _StoreTotals(leftKg: leftKg, mixtureKg: mixtureKg),
         if (stock.shortKg > 0) ...[
           const SizedBox(height: 12),
           Text(
@@ -133,49 +172,90 @@ class _FeedScreenState extends State<FeedScreen> {
             style: theme.textTheme.titleMedium?.copyWith(color: farmBarn),
           ),
         ],
-        if (lows.isNotEmpty) ...[
+        if (lows.isNotEmpty || finishedLows.isNotEmpty) ...[
           const SizedBox(height: 12),
-          _Alert(ingredients: lows, canBuy: widget.canManage),
+          _Alert(
+            ingredients: lows,
+            finished: finishedLows,
+            canBuy: widget.canManage,
+          ),
         ],
         const SizedBox(height: 20),
-        Text('1. Feed bought', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 4),
-        const Text('Mixing uses these kilos.'),
-        const SizedBox(height: 12),
-        _StockSection(rows: stock.ingredients, showMoney: widget.showMoney),
-        const SizedBox(height: 20),
-        Text('2. Mixtures ready', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 4),
-        const Text('Mixed feed that has not been given out yet.'),
-        const SizedBox(height: 12),
-        _MixtureSection(
-          mill: mill,
-          ready: ready,
-          showMoney: widget.showMoney,
-          onMix: () => _open(FeedTask.mix),
+        CardGrid(
+          minWidth: 280,
+          children: [
+            _SectionCard(
+              title: '1. Feed bought',
+              detail: 'Mixing uses these kilos.',
+              child: _StockSection(
+                rows: stock.ingredients,
+                showMoney: widget.showMoney,
+              ),
+            ),
+            _SectionCard(
+              title: '2. Mixtures ready',
+              detail: 'Finished feed still in the store.',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _MixtureSection(
+                    mill: mill,
+                    ready: ready,
+                    showMoney: widget.showMoney,
+                    onMix: () => _open(FeedTask.mix),
+                  ),
+                  const SizedBox(height: 12),
+                  _RecipeSection(
+                    mill: mill,
+                    showMoney: widget.showMoney,
+                    canManage: widget.canManage,
+                    onNew: () => _open(FeedTask.recipe),
+                    onOpen: (formula) =>
+                        _open(FeedTask.recipe, formula: formula),
+                  ),
+                ],
+              ),
+            ),
+            _SectionCard(
+              title: '3. Given to livestock',
+              detail: 'Giving feed out takes it off the mixture stock.',
+              child: _IssueSection(
+                mill: mill,
+                canGive: ready.isNotEmpty,
+                speciesChoices: widget.speciesChoices,
+                onGive: () => _open(FeedTask.give),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 12),
-        _RecipeSection(
-          mill: mill,
-          showMoney: widget.showMoney,
-          canManage: widget.canManage,
-          onNew: () => _open(FeedTask.recipe),
-          onOpen: (formula) => _open(FeedTask.recipe, formula: formula),
-        ),
-        const SizedBox(height: 20),
-        Text('3. Given to livestock', style: theme.textTheme.titleLarge),
-        const SizedBox(height: 4),
-        const Text('Giving feed out takes it off the mixture stock.'),
-        const SizedBox(height: 12),
-        _IssueSection(
-          mill: mill,
-          canGive: ready.isNotEmpty,
-          speciesChoices: widget.speciesChoices,
-          onGive: () => _open(FeedTask.give),
-        ),
+        if (!widget.limitedCharts) ...[
+          const SizedBox(height: 20),
+          RangeMenu(
+            preset: _preset,
+            custom: _custom,
+            customLabel: _customStart == null
+                ? 'Custom dates'
+                : '${formatFarmDate(_window(today).start)} – ${formatFarmDate(_window(today).end)}',
+            onPreset: (preset) => setState(() {
+              _custom = false;
+              _preset = preset;
+            }),
+            onCustom: _pickRange,
+            keyPrefix: 'feed-period',
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Stock above is what is here now. The charts follow these dates.',
+            style: theme.textTheme.bodyMedium,
+          ),
+        ],
         if (!widget.limitedCharts && mill.issues.isNotEmpty) ...[
           const SizedBox(height: 20),
-          _GivenCharts(mill: mill),
+          _GivenCharts(
+            mill: mill,
+            from: _window(today).start,
+            to: _window(today).end,
+          ),
         ],
         if (widget.limitedCharts) const SizedBox(height: 8),
         if (!widget.limitedCharts) ...[
@@ -194,6 +274,8 @@ class _FeedScreenState extends State<FeedScreen> {
             stock: stock,
             today: today,
             showMoney: widget.showMoney,
+            from: _window(today).start,
+            to: _window(today).end,
           ),
         ],
       ],
@@ -201,10 +283,139 @@ class _FeedScreenState extends State<FeedScreen> {
   }
 }
 
+class _StoreTotals extends StatelessWidget {
+  const _StoreTotals({required this.leftKg, required this.mixtureKg});
+
+  final double leftKg;
+  final double mixtureKg;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = leftKg + mixtureKg;
+    final leftShare = total <= 0 ? 0.0 : leftKg / total;
+    final mixShare = total <= 0 ? 0.0 : mixtureKg / total;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: SizedBox(
+            height: 16,
+            child: total <= 0
+                ? const ColoredBox(color: farmMist)
+                : Row(
+                    children: [
+                      if (leftShare > 0)
+                        Expanded(
+                          flex: (leftShare * 1000).round().clamp(1, 1000),
+                          child: const ColoredBox(color: farmLeaf),
+                        ),
+                      if (mixShare > 0)
+                        Expanded(
+                          flex: (mixShare * 1000).round().clamp(1, 1000),
+                          child: const ColoredBox(color: farmGold),
+                        ),
+                    ],
+                  ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        CardGrid(
+          minWidth: 180,
+          children: [
+            _CountCard(
+              label: 'Feed left',
+              value: formatKg(leftKg),
+              color: farmLeaf,
+            ),
+            _CountCard(
+              label: 'Mixture ready',
+              value: formatKg(mixtureKg),
+              color: farmGold,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _CountCard extends StatelessWidget {
+  const _CountCard({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              style: theme.textTheme.headlineMedium?.copyWith(color: color),
+            ),
+            const SizedBox(height: 4),
+            Text(label),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({
+    required this.title,
+    required this.detail,
+    required this.child,
+  });
+
+  final String title;
+  final String detail;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(title, style: theme.textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text(detail),
+            const SizedBox(height: 12),
+            child,
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _Alert extends StatelessWidget {
-  const _Alert({required this.ingredients, required this.canBuy});
+  const _Alert({
+    required this.ingredients,
+    required this.finished,
+    required this.canBuy,
+  });
 
   final List<IngredientOnHand> ingredients;
+  final List<FinishedStock> finished;
   final bool canBuy;
 
   @override
@@ -212,9 +423,13 @@ class _Alert extends StatelessWidget {
     final next = canBuy
         ? 'Record the purchase on Money before it runs out.'
         : 'Ask a manager to record it on Money before it runs out.';
-    final message = ingredients.length == 1
-        ? '${ingredients.single.ingredient.name} is low. ${formatKg(ingredients.single.leftKg)} left. $next'
-        : '${ingredients.length} ingredients are low: ${ingredients.map((row) => row.ingredient.name).join(', ')}. $next';
+    final names = [
+      for (final row in ingredients) row.ingredient.name,
+      for (final row in finished) row.name,
+    ];
+    final message = names.length == 1
+        ? '${names.single} is low. $next'
+        : '${names.length} feeds are low: ${names.join(', ')}. $next';
     return DecoratedBox(
       decoration: BoxDecoration(
         color: farmPaper,
@@ -410,33 +625,66 @@ class _StockSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+    if (rows.isEmpty) {
+      return const Text('No ingredients yet. Record a feed expense on Money.');
+    }
+    return CardGrid(
+      minWidth: 180,
       children: [
-        if (rows.isEmpty)
-          const Text('No ingredients yet. Record a feed expense on Money.')
-        else
-          PageBox(
-            count: rows.length,
-            height: 320,
-            itemBuilder: (context, index) {
-              return ListTile(
-                title: Text(rows[index].ingredient.name),
-                subtitle: Text(
-                  [
-                    formatKg(rows[index].leftKg),
-                    if (rows[index].usedKg > 0)
-                      '${formatKg(rows[index].usedKg)} used',
-                    if (showMoney)
-                      '${formatCedis(rows[index].ingredient.unitCost)} per kg',
-                    rows[index].ingredient.supplier,
-                    if (rows[index].low) 'Low',
-                  ].join(' · '),
-                ),
-              );
-            },
-          ),
+        for (final row in rows) _BoughtCard(row: row, showMoney: showMoney),
       ],
+    );
+  }
+}
+
+class _BoughtCard extends StatelessWidget {
+  const _BoughtCard({required this.row, required this.showMoney});
+
+  final IngredientOnHand row;
+  final bool showMoney;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final bought = row.ingredient.stockKg;
+    final left = row.leftKg;
+    final share = bought <= 0 ? 0.0 : (left / bought).clamp(0.0, 1.0);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: farmPaper,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: farmLine),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(row.ingredient.name, style: theme.textTheme.titleMedium),
+            Text(
+              ingredientGroup(
+                name: row.ingredient.name,
+                saved: row.ingredient.group,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text('Bought ${formatKg(bought)}'),
+            Text('Left ${formatKg(left)}'),
+            if (showMoney)
+              Text('${formatCedis(row.ingredient.unitCost)} per kg'),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: share,
+                minHeight: 10,
+                backgroundColor: farmMist,
+                color: row.low ? farmBarn : farmLeaf,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -517,6 +765,11 @@ class _MixtureSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final usedUp = mill.batches.length - ready.length;
+    final finished = finishedFeed(mill);
+    final peak = finished.fold<double>(
+      0,
+      (max, row) => row.leftKg > max ? row.leftKg : max,
+    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -526,6 +779,16 @@ class _MixtureSection extends StatelessWidget {
           icon: const Icon(Icons.add),
           label: const Text('Mix feed'),
         ),
+        if (finished.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          CardGrid(
+            minWidth: 160,
+            children: [
+              for (final row in finished)
+                _FinishedCard(row: row, peak: peak, showMoney: showMoney),
+            ],
+          ),
+        ],
         const SizedBox(height: 12),
         if (ready.isEmpty)
           Text(
@@ -559,6 +822,52 @@ class _MixtureSection extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _FinishedCard extends StatelessWidget {
+  const _FinishedCard({
+    required this.row,
+    required this.peak,
+    required this.showMoney,
+  });
+
+  final FinishedStock row;
+  final double peak;
+  final bool showMoney;
+
+  @override
+  Widget build(BuildContext context) {
+    final share = peak <= 0 ? 0.0 : (row.leftKg / peak).clamp(0.0, 1.0);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: farmPaper,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: row.low ? farmBarn : farmLine),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(row.name, style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text('Left ${formatKg(row.leftKg)}'),
+            if (showMoney && row.value > 0) Text(formatCedis(row.value)),
+            const SizedBox(height: 8),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: share,
+                minHeight: 10,
+                backgroundColor: farmMist,
+                color: row.low ? farmBarn : farmGold,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -619,45 +928,71 @@ class _ChartSection extends StatelessWidget {
     required this.stock,
     required this.today,
     required this.showMoney,
+    required this.from,
+    required this.to,
   });
 
   final FeedMill mill;
   final StoreStock stock;
   final DateTime today;
   final bool showMoney;
+  final DateTime from;
+  final DateTime to;
 
   @override
   Widget build(BuildContext context) {
     if (mill.batches.isEmpty && mill.ingredients.isEmpty) {
       return const Text('Buy ingredients and mix a batch to see the charts.');
     }
-    final trend = feedTrend(mill, today);
+    final trend = feedTrend(mill, today, from: from, to: to);
     final bars = [
       for (final row in stock.ingredients)
         if (row.leftKg > 0) ChartSlice(row.ingredient.name, row.leftKg),
+    ];
+    final finished = [
+      for (final row in finishedFeed(mill))
+        if (row.leftKg > 0) ChartSlice(row.name, row.leftKg),
+    ];
+    final poured = [
+      for (final row in ingredientPoured(mill, from: from, to: to))
+        if (row.$2 > 0) ChartSlice(row.$1, row.$2),
+    ];
+    final value = [
+      for (final row in finishedFeed(mill))
+        if (row.value > 0) ChartSlice(row.name, row.value),
+    ];
+    final costPerKg = [
+      for (final row in trend)
+        (row.label, row.producedKg <= 0 ? 0.0 : row.cost / row.producedKg),
     ];
     return Column(
       children: [
         ShareBars(title: 'Ingredient stock', slices: bars),
         const SizedBox(height: 12),
-        _MonthBars(
+        ShareBars(title: 'Finished feed', slices: finished),
+        const SizedBox(height: 12),
+        TrendLine(
           title: 'Feed mixed',
           points: [for (final row in trend) (row.label, row.producedKg)],
-          money: false,
         ),
         const SizedBox(height: 12),
-        _MonthBars(
+        TrendLine(
           title: 'Feed given out',
           points: [for (final row in trend) (row.label, row.issuedKg)],
-          money: false,
+          color: farmGold,
         ),
+        const SizedBox(height: 12),
+        ShareTreemap(title: 'Ingredients used', slices: poured),
         if (showMoney) ...[
           const SizedBox(height: 12),
-          _MonthBars(
-            title: 'Feed cost',
-            points: [for (final row in trend) (row.label, row.cost)],
-            money: true,
+          MixDonut(
+            title: 'Feed value',
+            subtitle: 'Cedis still in finished feed',
+            slices: value,
+            format: formatCedis,
           ),
+          const SizedBox(height: 12),
+          TrendLine(title: 'Cost per kg', points: costPerKg, color: farmBrown),
         ],
       ],
     );
@@ -665,15 +1000,21 @@ class _ChartSection extends StatelessWidget {
 }
 
 class _GivenCharts extends StatelessWidget {
-  const _GivenCharts({required this.mill});
+  const _GivenCharts({
+    required this.mill,
+    required this.from,
+    required this.to,
+  });
 
   final FeedMill mill;
+  final DateTime from;
+  final DateTime to;
 
   @override
   Widget build(BuildContext context) {
-    final animals = feedGivenBySpecies(mill);
-    final groups = feedGivenByGroup(mill);
-    final pens = feedGivenByPen(mill);
+    final animals = feedGivenBySpecies(mill, from: from, to: to);
+    final groups = feedGivenByGroup(mill, from: from, to: to);
+    final pens = feedGivenByPen(mill, from: from, to: to);
     final charts = <Widget>[
       if (animals.isNotEmpty)
         MixDonut(
@@ -732,64 +1073,6 @@ class _GivenCharts extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-class _MonthBars extends StatelessWidget {
-  const _MonthBars({
-    required this.title,
-    required this.points,
-    required this.money,
-  });
-
-  final String title;
-  final List<(String, double)> points;
-  final bool money;
-
-  @override
-  Widget build(BuildContext context) {
-    final peak = points.fold<double>(
-      0,
-      (max, row) => row.$2 > max ? row.$2 : max,
-    );
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: theme.textTheme.titleLarge),
-            const SizedBox(height: 12),
-            if (peak <= 0)
-              const Text('None in the last six months.')
-            else
-              for (final row in points) ...[
-                Text(row.$1, style: theme.textTheme.titleSmall),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: LinearProgressIndicator(
-                          minHeight: 14,
-                          value: peak == 0 ? 0 : row.$2 / peak,
-                          backgroundColor: farmMist,
-                          color: farmLeaf,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Text(money ? formatCedis(row.$2) : formatKg(row.$2)),
-                  ],
-                ),
-                const SizedBox(height: 8),
-              ],
-          ],
-        ),
-      ),
     );
   }
 }
