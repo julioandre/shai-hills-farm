@@ -1,6 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shai_hills_farm/data/key_value_store.dart';
 
+
 class PreferencesStore implements KeyValueStore {
   PreferencesStore(this._preferences);
 
